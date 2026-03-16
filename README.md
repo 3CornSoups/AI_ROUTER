@@ -1,66 +1,48 @@
-# 快速部署指南
+# 功能说明与 AI 维护指南
 
-## 1. 环境准备
+## 1. 功能清单
 
-### 硬件要求
-- 内存: 至少 4GB (推荐 8GB)
-- CPU: 至少 2 核 (推荐 4 核)
-- 存储: 至少 10GB 可用空间
+| 模块 | 功能 | 依赖 | 触发条件 | 返回码 |
+| :--- | :--- | :--- | :--- | :--- |
+| **接入层** | 统一模型接入 (LiteLLM) | FastAPI, litellm | POST /v1/chat/completions | 200, 401, 500 |
+| **接入层** | 多模态输入转换 | httpx, base64 | 消息包含 image_url | 200 |
+| **高并发** | Redis 分布式限流 | Redis | API Key 调用频率超限 | 429 |
+| **高可用** | 模型熔断与重试 | Redis, tenacity | 连续 10 次调用失败 | 503 |
+| **路由** | 智能场景路由 | Pydantic | 请求携带 scenario 标识 | 200 |
+| **安全** | 敏感词内容过滤 | re, settings | 匹配内置敏感词库 | 403 |
 
-### 软件依赖
-- Docker 20.10+
-- Docker Compose v2+
-- Python 3.10+ (如果选择本地部署)
-- Redis 7.0+ (如果选择本地部署)
+## 2. 核心配置说明
 
-## 2. 一键部署步骤
+- `DEFAULT_QPS_LIMIT`: 每秒请求数限制，默认 10。
+- `CACHE_TTL`: 请求缓存过期时间（秒），默认 300。
+- `LITELLM_MASTER_KEY`: 调用外部模型的主密钥。
+- `SENSITIVE_WORDS`: 预定义敏感词列表。
 
-1. **克隆代码库**
-   ```bash
-   git clone <repository_url>
-   cd ai-gateway
-   ```
+## 3. AI 维护指南 (Prompt 模板)
 
-2. **配置环境变量**
-   创建 `.env` 文件并填入必要的 API 密钥和数据库连接信息：
-   ```env
-   # .env 文件
-   SECRET_KEY=your-secret-key
-   REDIS_HOST=localhost
-   REDIS_PORT=6379
-   LITELLM_MASTER_KEY=sk-xxxx
-   ```
+### 场景 1: 新增模型适配
+将以下文本发送给 AI 助手：
+> **Prompt**: 请在 `models/database.py` 中新增一个模型配置，模型名为 `ernie-4.0`，所属场景为 `chat`，成本设为 0.05元/1k tokens。同时请在 `core/llm_client.py` 中确认 LiteLLM 的调用逻辑是否需要针对文心一言进行特殊参数调整。
 
-3. **修改模型配置**
-   在 `config/settings.py` 或数据库中维护模型路由规则。
+### 场景 2: 修改配置与阈值
+将以下文本发送给 AI 助手：
+> **Prompt**: 我需要将默认 QPS 限制提高到 50，并将 Redis 缓存时间延长至 10 分钟。请修改 `config/settings.py` 中的相应字段。
 
-4. **启动服务**
-   ```bash
-   chmod +x start.sh
-   ./start.sh
-   ```
+### 场景 3: 排查调用报错
+将以下文本发送给 AI 助手：
+> **Prompt**: 收到用户反馈调用 `gpt-4` 时出现 503 错误，提示熔断器已开启。请分析 `core/governance.py` 中的熔断触发逻辑，并提供一个临时重置熔断状态的脚本。
 
-## 3. 部署验证
+## 4. 接口说明 (API Docs)
 
-### 基础健康检查
-```bash
-curl http://localhost:8000/
-```
-预期输出: `{"message": "Welcome to Production-grade AI Gateway", "status": "healthy"}`
-
-### 核心功能测试 (Chat API)
-```bash
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Authorization: Bearer test-key-123" \
-  -H "Content-Type: application/json" \
-  -d '{
+### Chat Completions
+- **URL**: `/v1/chat/completions`
+- **Method**: `POST`
+- **Header**: `Authorization: Bearer <API_KEY>`
+- **Payload**:
+  ```json
+  {
     "model": "gpt-3.5-turbo",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
-```
-
-## 4. 常见问题
-
-- **Redis 连接超时**：请检查 `REDIS_HOST` 是否正确，容器内建议使用 `redis` 作为 host 名。
-- **模型调用 401**：请确保 `LITELLM_MASTER_KEY` 或模型对应的 API Key 已正确配置。
-- **数据库连接异常**：确认 `DATABASE_URL` 路径及读写权限。
+    "messages": [{"role": "user", "content": "你好"}]
+  }
+  ```
+- **Response**: 标准 OpenAI 格式响应。
