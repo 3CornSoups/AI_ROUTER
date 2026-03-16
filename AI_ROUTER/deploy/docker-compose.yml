@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: ai_gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - DATABASE_URL=sqlite+aiosqlite:///./gateway.db
+    volumes:
+      - ../gateway.db:/app/gateway.db
+      - ../logs:/app/logs
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7.0-alpine
+    container_name: gateway_redis
+    ports:
+      - "6379:6379"
+
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: gateway_prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
